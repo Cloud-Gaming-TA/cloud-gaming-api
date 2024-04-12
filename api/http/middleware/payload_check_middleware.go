@@ -100,7 +100,7 @@ func PayloadCheckMiddleware(template httpx.Payload, requiredFields ...string) (M
 	}
 
 	return func(next http.Handler, db *sql.DB, config interface{}) http.Handler {
-		fn := func(db *sql.DB, config interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+		fn := func(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 
 			if r.Header.Get("Content-Type") != "application/json" {
 				return responseerror.CreateBadRequestError(
@@ -135,10 +135,6 @@ func PayloadCheckMiddleware(template httpx.Payload, requiredFields ...string) (M
 			return nil
 		}
 
-		return &httpx.Handler{
-			DB:      db,
-			Config:  config,
-			Handler: httpx.HandlerLogic(fn),
-		}
+		return httpx.CreateHTTPHandler(db, config, fn)
 	}, nil
 }

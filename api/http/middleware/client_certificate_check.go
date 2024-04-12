@@ -15,7 +15,7 @@ import (
 
 func CertMiddleware(rootCACerts *x509.CertPool) Middleware {
 	return func(next http.Handler, db *sql.DB, conf interface{}) http.Handler {
-		fn := func(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+		fn := func(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 			if r.TLS == nil {
 				fmt.Println("restricted route called without TLS")
 			}
@@ -84,10 +84,6 @@ func CertMiddleware(rootCACerts *x509.CertPool) Middleware {
 			)
 		}
 
-		return &httpx.Handler{
-			DB:      db,
-			Config:  conf,
-			Handler: httpx.HandlerLogic(fn),
-		}
+		return httpx.CreateHTTPHandler(db, conf, fn)
 	}
 }

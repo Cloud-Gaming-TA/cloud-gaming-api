@@ -91,15 +91,15 @@ var AUTH_REVOKE_TOKEN_ENDPOINT string = "v1/auth/token/revoke"
 // 	return nil
 // }
 
-func registerHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func registerHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	var req *httpx.HTTPRequest
 
-	cf := conf.(*config.Config)
+	cf := metadata.Config.(*config.Config)
 
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Account)
 
 	// Check username and email exist or not
-	exist, err := querynator.IsExists(&payload.Account{Email: body.Email}, db, "account")
+	exist, err := querynator.IsExists(&payload.Account{Email: body.Email}, metadata.DB, "account")
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -113,7 +113,7 @@ func registerHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *htt
 		)
 	}
 
-	exist, err = querynator.IsExists(&payload.Account{Username: body.Username}, db, "account")
+	exist, err = querynator.IsExists(&payload.Account{Username: body.Username}, metadata.DB, "account")
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
 	}
@@ -132,7 +132,7 @@ func registerHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *htt
 		return responseerror.CreateInternalServiceError(err)
 	}
 
-	tx, err := sqlx.NewDb(db, cf.Database.Driver).Beginx()
+	tx, err := sqlx.NewDb(metadata.DB, cf.Database.Driver).Beginx()
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -211,14 +211,14 @@ func registerHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *htt
 	return nil
 }
 
-func loginHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
-	cf := conf.(*config.Config)
+func loginHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+	cf := metadata.Config.(*config.Config)
 
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Account)
 
 	// Grab password and salt from db associated with username
 	user := &payload.Account{}
-	err := querynator.FindOne(&payload.Account{Email: body.Email}, user, db, "account", "username", "password", "password_salt", "is_active")
+	err := querynator.FindOne(&payload.Account{Email: body.Email}, user, metadata.DB, "account", "username", "password", "password_salt", "is_active")
 
 	switch err {
 	case nil:
@@ -293,14 +293,14 @@ func loginHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.R
 	return nil
 }
 
-func resendOTPHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func resendOTPHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	// TODO: Use Transaction when inserting data or update data into the database
-	cf := conf.(*config.Config)
+	cf := metadata.Config.(*config.Config)
 	body := r.Context().Value(middleware.PayloadKey).(*payload.UserOTP)
 
 	// check if confirmation id exists
 	u := &payload.UserOTP{}
-	err := querynator.FindOne(&payload.UserOTP{Email: body.Email, MarkedForDeletion: strconv.FormatBool(false)}, u, db, "user_otp",
+	err := querynator.FindOne(&payload.UserOTP{Email: body.Email, MarkedForDeletion: strconv.FormatBool(false)}, u, metadata.DB, "user_otp",
 		"otp_id",
 		"last_resend",
 	)
@@ -383,7 +383,13 @@ func resendOTPHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	w.Write(json)
 
 	// Update the otp
-	err = querynator.Update(&payload.UserOTP{OTP: otp, LastResend: date.GenerateTimestamp(), ExpiredAt: date.GenerateTimestampWithOffset(cf.OTP.ResendDurationMinutes)}, []string{"otp_id"}, []any{u.OTPID}, db, "user_otp")
+	err = querynator.Update(&payload.UserOTP{
+		OTP:        otp,
+		LastResend: date.GenerateTimestamp(),
+		ExpiredAt:  date.GenerateTimestampWithOffset(cf.OTP.ResendDurationMinutes),
+	},
+		[]string{"otp_id"}, []any{u.OTPID}, metadata.DB, "user_otp",
+	)
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -392,7 +398,7 @@ func resendOTPHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	return nil
 }
 
-func verifyOTPHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func verifyOTPHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	var validOTP = &payload.UserOTP{}
 
 	body := r.Context().Value(middleware.PayloadKey).(*payload.UserOTP)
@@ -400,7 +406,7 @@ func verifyOTPHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	err := querynator.FindOne(&payload.UserOTP{
 		Email:             body.Email,
 		MarkedForDeletion: strconv.FormatBool(false)},
-		validOTP, db, "user_otp", "otp", "otp_id", "expired_at",
+		validOTP, metadata.DB, "user_otp", "otp", "otp_id", "expired_at",
 	)
 
 	switch err {
@@ -442,7 +448,7 @@ func verifyOTPHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	// otp is correct, update user to be an active user, marked otp entry, and add token to revoked list
 
 	// create sqlx connection
-	sqlxDb := sqlx.NewDb(db, "postgres")
+	sqlxDb := sqlx.NewDb(metadata.DB, "postgres")
 	tx, err := sqlxDb.Beginx()
 
 	if err != nil {
@@ -477,7 +483,7 @@ func verifyOTPHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	return nil
 }
 
-func linkSteamAccountHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func linkSteamAccountHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	vars := mux.Vars(r)
 	username := vars["username"]
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Account)
@@ -497,7 +503,7 @@ func linkSteamAccountHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, r
 
 	user := &payload.Account{}
 
-	err := querynator.FindOne(&payload.Account{Username: username}, user, db, "account", "steamid")
+	err := querynator.FindOne(&payload.Account{Username: username}, user, metadata.DB, "account", "steamid")
 
 	switch err {
 	case nil:
@@ -518,7 +524,7 @@ func linkSteamAccountHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, r
 		)
 	}
 
-	sqlxDb := sqlx.NewDb(db, "postgres")
+	sqlxDb := sqlx.NewDb(metadata.DB, "postgres")
 	tx, err := sqlxDb.Beginx()
 
 	if err != nil {
@@ -550,12 +556,12 @@ func linkSteamAccountHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, r
 	return nil
 }
 
-func rollbackSteamLinkHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func rollbackSteamLinkHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	vars := mux.Vars(r)
 	username := vars["username"]
 
 	// check if username exist
-	isExist, err := querynator.IsExists(&payload.Account{Username: username}, db, "account")
+	isExist, err := querynator.IsExists(&payload.Account{Username: username}, metadata.DB, "account")
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -567,7 +573,7 @@ func rollbackSteamLinkHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, 
 		})
 	}
 
-	sqlxDb := sqlx.NewDb(db, "postgres")
+	sqlxDb := sqlx.NewDb(metadata.DB, "postgres")
 	tx, err := sqlxDb.Beginx()
 
 	if err != nil {
@@ -600,13 +606,13 @@ func rollbackSteamLinkHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, 
 	return nil
 }
 
-func getUserSteamIDHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func getUserSteamIDHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	vars := mux.Vars(r)
 	username := vars["username"]
 
 	user := &payload.Account{}
 
-	err := querynator.FindOne(&payload.Account{Username: username}, user, db, "account", "steamid")
+	err := querynator.FindOne(&payload.Account{Username: username}, user, metadata.DB, "account", "steamid")
 
 	if err != nil {
 		if err == sql.ErrNoRows {

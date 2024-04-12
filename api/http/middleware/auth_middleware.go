@@ -25,7 +25,7 @@ type ServiceAPI struct {
 
 func AuthMiddleware(authAPI ServiceAPI, tlsConfig *tls.Config) Middleware {
 	return func(next http.Handler, db *sql.DB, conf interface{}) http.Handler {
-		fn := func(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+		fn := func(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 			var token string
 
 			endpoint := r.Context().Value(EndpointKey).(string)
@@ -90,10 +90,6 @@ func AuthMiddleware(authAPI ServiceAPI, tlsConfig *tls.Config) Middleware {
 			return nil
 		}
 
-		return &httpx.Handler{
-			DB:      db,
-			Config:  conf,
-			Handler: httpx.HandlerLogic(fn),
-		}
+		return httpx.CreateHTTPHandler(db, conf, fn)
 	}
 }

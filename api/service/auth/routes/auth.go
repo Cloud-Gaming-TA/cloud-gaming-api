@@ -28,11 +28,11 @@ type RevokedToken struct {
 
 var querynator = &database.Querynator{}
 
-func IssueTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func IssueTokenHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	var roles jwtutil.Roles
 	var ok bool
 
-	cf := conf.(*config.Config)
+	cf := metadata.Config.(*config.Config)
 
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Credentials)
 
@@ -72,8 +72,8 @@ func IssueTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *h
 	return nil
 }
 
-func RefreshTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
-	cf := conf.(*config.Config)
+func RefreshTokenHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+	cf := metadata.Config.(*config.Config)
 
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Token)
 
@@ -85,7 +85,7 @@ func RefreshTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r 
 	}
 
 	// check if the token is revoked
-	isExist, err := querynator.IsExists(&RevokedToken{Token: body.AccessToken}, db, "revoked_token")
+	isExist, err := querynator.IsExists(&RevokedToken{Token: body.AccessToken}, metadata.DB, "revoked_token")
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -128,9 +128,9 @@ func RefreshTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r 
 	return nil
 }
 
-func VerifyTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func VerifyTokenHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	var err error
-	cf := conf.(*config.Config)
+	cf := metadata.Config.(*config.Config)
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Access)
 
 	// verify token
@@ -156,10 +156,10 @@ func VerifyTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *
 	return nil
 }
 
-func RevokeTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func RevokeTokenHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	var err error
 
-	cf := conf.(*config.Config)
+	cf := metadata.Config.(*config.Config)
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Token)
 
 	claims, err := jwtutil.VerifyToken(body.AccessToken, cf.Session.SecretKeyRaw)
@@ -175,7 +175,7 @@ func RevokeTokenHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *
 		TokenType: string(jwtutil.Auth),
 		ExpiredAt: claims.RegisteredClaims.ExpiresAt.Format(time.RFC3339),
 		Username:  claims.Username,
-	}, db, "revoked_token", "")
+	}, metadata.DB, "revoked_token", "")
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -215,11 +215,7 @@ func SetAuthRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
 		log.Fatal(err)
 	}
 
-	issueToken := &httpx.Handler{
-		DB:      db,
-		Config:  conf,
-		Handler: httpx.HandlerLogic(IssueTokenHandler),
-	}
+	issueToken := httpx.CreateHTTPHandler(db, conf, IssueTokenHandler)
 
 	// refreshToken := &httpx.Handler{
 	// 	DB:      db,
@@ -229,17 +225,9 @@ func SetAuthRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
 
 	refreshToken := httpx.CreateHTTPHandler(db, conf, RefreshTokenHandler)
 
-	verifyToken := &httpx.Handler{
-		DB:      db,
-		Config:  conf,
-		Handler: httpx.HandlerLogic(VerifyTokenHandler),
-	}
+	verifyToken := httpx.CreateHTTPHandler(db, conf, VerifyTokenHandler)
 
-	revokeToken := &httpx.Handler{
-		DB:      db,
-		Config:  conf,
-		Handler: httpx.HandlerLogic(RevokeTokenHandler),
-	}
+	revokeToken := httpx.CreateHTTPHandler(db, conf, RevokeTokenHandler)
 
 	subrouter.Handle("/token/issue", middleware.UseMiddleware(db, conf, issueToken, certMiddleware, credentialsPayloadMiddleware))
 	subrouter.Handle("/token/refresh", middleware.UseMiddleware(db, conf, refreshToken,

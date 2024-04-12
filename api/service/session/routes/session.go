@@ -39,7 +39,7 @@ var querynator = database.Querynator{
 	DriverName: "postgres",
 }
 
-func createNewSessionHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func createNewSessionHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	// cf := conf.(*config.Config)
 	body := r.Context().Value(middleware.PayloadKey).(*payload.UserSession)
 
@@ -70,7 +70,7 @@ func createNewSessionHandler(db *sql.DB, conf interface{}, w http.ResponseWriter
 	body.SessionMetadata.CreatedAt = date.GenerateTimestamp()
 
 	// Insert data isnto database
-	tx, err := db.Begin()
+	tx, err := metadata.DB.Begin()
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
 	}
@@ -139,7 +139,7 @@ func createNewSessionHandler(db *sql.DB, conf interface{}, w http.ResponseWriter
 
 }
 
-func getRequestStatus(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func getRequestStatus(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	vars := mux.Vars(r)
 
 	claims := r.Context().Value(middleware.ClaimsKey).(*jwtutil.Claims)
@@ -163,7 +163,7 @@ func getRequestStatus(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.
 	// err = querynator.FindOne(&payload.UserSession{
 	// 	SessionID:         sessionID,
 	// 	MarkedForDeletion: strconv.FormatBool(false),
-	// }, userSession, db, "user_session", "username", "request_status", "last_updated")
+	// }, userSession, metadata.DB, "user_session", "username", "request_status", "last_updated")
 
 	joinTables := []struct {
 		payload.UserSession
@@ -173,7 +173,7 @@ func getRequestStatus(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.
 	joinExecutor := querynator.PrepareJoinOperation()
 	joinExecutor.AddJoinTable("session_host", "session_id", "user_session", "session_id")
 
-	err = joinExecutor.Find(db, []database.QueryCondition{
+	err = joinExecutor.Find(metadata.DB, []database.QueryCondition{
 		{TableName: "user_session", ColumnName: "session_id", MatchValue: sessionID, Operand: database.EQ},
 	}, &joinTables, "user_session", database.LEFT_JOIN, map[string][]string{
 		"user_session": {"username", "request_status", "last_update"},
@@ -219,7 +219,7 @@ func getRequestStatus(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.
 	return nil
 }
 
-func startConnectionEstablishmentHandler(db *sql.DB, _ interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func startConnectionEstablishmentHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	vars := mux.Vars(r)
 	sessionIDString := vars["session_id"]
 
@@ -239,7 +239,7 @@ func startConnectionEstablishmentHandler(db *sql.DB, _ interface{}, w http.Respo
 	body := r.Context().Value(middleware.PayloadKey).(*payload.SessionHost)
 	body.SessionID_ = sessionID
 
-	tx, err := db.Begin()
+	tx, err := metadata.DB.Begin()
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -276,8 +276,8 @@ func startConnectionEstablishmentHandler(db *sql.DB, _ interface{}, w http.Respo
 	return nil
 }
 
-func pairHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
-	cf := conf.(*config.Config)
+func pairHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+	cf := metadata.Config.(*config.Config)
 	vars := mux.Vars(r)
 	sessionIDString := vars["session_id"]
 
@@ -301,7 +301,7 @@ func pairHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Re
 
 	// get the host id
 	host := &payload.SessionHost{}
-	err = querynator.FindOne(&payload.SessionHost{SessionID_: sessionID}, host, db, "session_host", "webhook_host")
+	err = querynator.FindOne(&payload.SessionHost{SessionID_: sessionID}, host, metadata.DB, "session_host", "webhook_host")
 	switch err {
 	case nil:
 		break
@@ -314,7 +314,7 @@ func pairHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Re
 	}
 
 	// update the status to Running
-	tx, err := db.Begin()
+	tx, err := metadata.DB.Begin()
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
 	}

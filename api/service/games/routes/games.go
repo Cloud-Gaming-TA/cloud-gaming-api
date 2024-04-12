@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/AdityaP1502/Instant-Messanging/api/cache"
 	"github.com/AdityaP1502/Instant-Messanging/api/database"
 	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/middleware"
@@ -49,7 +50,7 @@ type SessionRequest struct {
 	Metadata SessionMetadata `json:"session_metadata"`
 }
 
-func syncUserGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+func syncUserGamesHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 	body := r.Context().Value(middleware.PayloadKey).(*payload.Collections)
 
 	// read username from path parameter
@@ -57,7 +58,7 @@ func syncUserGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r
 	username := vars["username"]
 
 	filterExecutor := querynator.PrepareFilterOperation()
-	err := filterExecutor.UseTransaction(db)
+	err := filterExecutor.UseTransaction(metadata.DB)
 
 	if err != nil {
 		return responseerror.CreateInternalServiceError(err)
@@ -74,7 +75,7 @@ func syncUserGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r
 
 	filterExecutor.AddTableSource("games", "game_id", "game_id")
 	filterExecutor.UseExplicitCast()
-	err = filterExecutor.BatchInsert(userGames, db, "user_games")
+	err = filterExecutor.BatchInsert(userGames, metadata.DB, "user_games")
 
 	if err != nil {
 		if filterExecutor.Tx != nil {
@@ -101,8 +102,8 @@ func syncUserGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r
 	return nil
 }
 
-func listGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
-	cf := conf.(*config.Config)
+func listGamesHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+	cf := metadata.Config.(*config.Config)
 	vars := mux.Vars(r)
 	username := vars["username"]
 
@@ -156,7 +157,7 @@ func listGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	joinExecutor.AddJoinTable("games", "game_id", "user_games", "game_id")
 	joinExecutor.SetLimit(limit)
 	// joinExecutor.OrderBy("collections_id ", database.DESCENDING)
-	err_ = joinExecutor.Find(db, []database.QueryCondition{
+	err_ = joinExecutor.Find(metadata.DB, []database.QueryCondition{
 		{TableName: "user_games", ColumnName: "collections_id", MatchValue: cursor, Operand: database.GT},
 	}, &joinResults, "user_games", database.INNER_JOIN, map[string][]string{
 		"user_games": {"collections_id"},
@@ -200,8 +201,8 @@ func listGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 
 }
 
-func playGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
-	cf := conf.(*config.Config)
+func playGamesHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
+	cf := metadata.Config.(*config.Config)
 
 	body := r.Context().Value(middleware.PayloadKey).(*payload.UserGames)
 	fmt.Println(body.GameID)
@@ -237,15 +238,15 @@ func playGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	joinExecutor.AddJoinTable("storage_location", "storage_id", "games", "storage_id")
 
 	dest := []struct {
-		Username string `db:"username"`
-		GameID   int    `db:"game_id"`
-		Protocol string `db:"protocol"`
-		Port     int    `db:"port"`
-		Host     string `db:"host"`
-		Location string `db:"location"`
+		Username string `metadata.DB:"username"`
+		GameID   int    `metadata.DB:"game_id"`
+		Protocol string `metadata.DB:"protocol"`
+		Port     int    `metadata.DB:"port"`
+		Host     string `metadata.DB:"host"`
+		Location string `metadata.DB:"location"`
 	}{}
 
-	err_ := joinExecutor.Find(db, []database.QueryCondition{
+	err_ := joinExecutor.Find(metadata.DB, []database.QueryCondition{
 		{TableName: "user_games", ColumnName: "username", MatchValue: body.Username, Operand: database.EQ},
 		{TableName: "user_games", ColumnName: "game_id", MatchValue: body.GameID, Operand: database.EQ},
 	}, &dest, "user_games", database.INNER_JOIN, map[string][]string{
@@ -318,7 +319,7 @@ func playGamesHandler(db *sql.DB, conf interface{}, w http.ResponseWriter, r *ht
 	return nil
 }
 
-func SetGamesRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
+func SetGamesRoute(r *mux.Router, db *sql.DB, cache *cache.RedisClient, conf *config.Config) {
 	certMiddleware := middleware.CertMiddleware(conf.RootCAs)
 	authMiddleware := middleware.AuthMiddleware(conf.Service.Auth, conf.Config)
 
@@ -352,6 +353,8 @@ func SetGamesRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
 	)).Methods("POST")
 
 	listGames := httpx.CreateHTTPHandler(db, conf, listGamesHandler)
+	listGames.SetCache(cache)
+
 	subrouter.Handle("/{username}/collections", middleware.UseMiddleware(db, conf, listGames, authMiddleware)).Methods("GET")
 
 	// subrouter.Handle("/{username}/sync", middleware.UseMiddleware(db, conf, syncGames, syncGamesPayloadMiddleware)).Methods("POST")
