@@ -5,23 +5,32 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/AdityaP1502/Instant-Messanging/api/cache"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/responseerror"
 	"github.com/AdityaP1502/Instant-Messanging/api/jsonutil"
 )
 
-type HandlerLogic func(db *sql.DB, conf interface{}, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError
+type HandlerLogic func(metadata *Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError
 
+type Metadata struct {
+	DB     *sql.DB
+	Cache  *cache.RedisClient
+	Config interface{}
+}
 type Handler struct {
-	DB      *sql.DB
-	Config  interface{}
-	Handler HandlerLogic
+	Metadata *Metadata
+	Handler  HandlerLogic
+}
+
+func (h *Handler) SetCache(client *cache.RedisClient) {
+	h.Metadata.Cache = client
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	if err := h.Handler(h.DB, h.Config, w, r); err != nil {
+	if err := h.Handler(h.Metadata, w, r); err != nil {
 		if internalErr, ok := err.(*responseerror.InternalServiceError); ok {
 			fmt.Println(internalErr.Description)
 		}
@@ -46,10 +55,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func CreateHTTPHandler(db *sql.DB, conf interface{}, logic HandlerLogic) http.Handler {
+func CreateHTTPHandler(db *sql.DB, conf interface{}, logic HandlerLogic) *Handler {
 	handler := &Handler{
-		DB:      db,
-		Config:  conf,
+		Metadata: &Metadata{
+			DB:     db,
+			Config: conf,
+		},
 		Handler: logic,
 	}
 
