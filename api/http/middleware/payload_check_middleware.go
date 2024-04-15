@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -63,7 +62,7 @@ func checkFieldsValidity(template interface{}, requiredFields []string) error {
 	return nil
 }
 
-func PayloadCheckMiddleware(template httpx.Payload, requiredFields ...string) (Middleware, error) {
+func PayloadCheckMiddleware(template httpx.Payload, metadata *httpx.Metadata, requiredFields ...string) (Middleware, error) {
 	var payload httpx.Payload
 
 	p := reflect.ValueOf(template)
@@ -99,7 +98,7 @@ func PayloadCheckMiddleware(template httpx.Payload, requiredFields ...string) (M
 		return nil, err
 	}
 
-	return func(next http.Handler, db *sql.DB, config interface{}) http.Handler {
+	return func(next http.Handler) http.Handler {
 		fn := func(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 
 			if r.Header.Get("Content-Type") != "application/json" {
@@ -135,6 +134,9 @@ func PayloadCheckMiddleware(template httpx.Payload, requiredFields ...string) (M
 			return nil
 		}
 
-		return httpx.CreateHTTPHandler(db, config, fn)
+		return &httpx.Handler{
+			Metadata: metadata,
+			Handler:  fn,
+		}
 	}, nil
 }

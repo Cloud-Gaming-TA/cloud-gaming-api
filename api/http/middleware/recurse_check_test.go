@@ -4,6 +4,7 @@ import (
 	"io"
 	"testing"
 
+	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/httputil"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/responseerror"
 	"github.com/AdityaP1502/Instant-Messanging/api/jsonutil"
@@ -65,7 +66,7 @@ func (c *UserSession) ToJSON(checkRequired bool, requiredFields []string) ([]byt
 }
 
 func TestRecurseValidityCheck(t *testing.T) {
-	_, err := PayloadCheckMiddleware(&UserSession{},
+	_, err := PayloadCheckMiddleware(&UserSession{}, &httpx.Metadata{},
 		"Username",
 		"SessionMetadata:GameID",
 		"SessionMetadata:GameLocation:Protocol",

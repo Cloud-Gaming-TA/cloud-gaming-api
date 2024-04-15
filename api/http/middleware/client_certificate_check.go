@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"crypto/x509"
-	"database/sql"
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
@@ -13,8 +12,8 @@ import (
 	"github.com/AdityaP1502/Instant-Messanging/api/http/responseerror"
 )
 
-func CertMiddleware(rootCACerts *x509.CertPool) Middleware {
-	return func(next http.Handler, db *sql.DB, conf interface{}) http.Handler {
+func CertMiddleware(rootCACerts *x509.CertPool, metadata *httpx.Metadata) Middleware {
+	return func(next http.Handler) http.Handler {
 		fn := func(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 			if r.TLS == nil {
 				fmt.Println("restricted route called without TLS")
@@ -84,6 +83,9 @@ func CertMiddleware(rootCACerts *x509.CertPool) Middleware {
 			)
 		}
 
-		return httpx.CreateHTTPHandler(db, conf, fn)
+		return &httpx.Handler{
+			Metadata: metadata,
+			Handler:  fn,
+		}
 	}
 }

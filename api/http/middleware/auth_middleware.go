@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"crypto/tls"
-	"database/sql"
 	"net/http"
 	"strings"
 
@@ -23,8 +22,8 @@ type ServiceAPI struct {
 	Scheme string `json:"scheme"`
 }
 
-func AuthMiddleware(authAPI ServiceAPI, tlsConfig *tls.Config) Middleware {
-	return func(next http.Handler, db *sql.DB, conf interface{}) http.Handler {
+func AuthMiddleware(authAPI ServiceAPI, tlsConfig *tls.Config, metadata *httpx.Metadata) Middleware {
+	return func(next http.Handler) http.Handler {
 		fn := func(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Request) responseerror.HTTPCustomError {
 			var token string
 
@@ -90,6 +89,9 @@ func AuthMiddleware(authAPI ServiceAPI, tlsConfig *tls.Config) Middleware {
 			return nil
 		}
 
-		return httpx.CreateHTTPHandler(db, conf, fn)
+		return &httpx.Handler{
+			Metadata: metadata,
+			Handler:  fn,
+		}
 	}
 }
