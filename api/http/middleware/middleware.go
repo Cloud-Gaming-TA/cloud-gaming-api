@@ -1,19 +1,18 @@
 package middleware
 
 import (
-	"database/sql"
 	"net/http"
 )
 
 type ContextKey string
 
-type Middleware func(next http.Handler, db *sql.DB, conf interface{}) http.Handler
+type Middleware func(next http.Handler) http.Handler
 
-func UseMiddleware(db *sql.DB, conf interface{}, handler http.Handler, middlewares ...Middleware) http.Handler {
+func UseMiddleware(handler http.Handler, middlewares ...Middleware) http.Handler {
 	chained := handler
 
 	for i := len(middlewares) - 1; i > -1; i-- {
-		chained = middlewares[i](chained, db, conf)
+		chained = middlewares[i](chained)
 	}
 
 	// append cors middleware into the chain
