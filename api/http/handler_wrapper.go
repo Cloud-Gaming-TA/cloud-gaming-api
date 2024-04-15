@@ -22,9 +22,9 @@ type Handler struct {
 	Handler  HandlerLogic
 }
 
-func (h *Handler) SetCache(client *cache.RedisClient) {
-	h.Metadata.Cache = client
-}
+// func (h *Handler) SetCache(client *cache.RedisClient) {
+// 	h.Metadata.Cache = client
+// }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
