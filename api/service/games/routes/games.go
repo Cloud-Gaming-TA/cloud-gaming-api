@@ -1,17 +1,16 @@
 package routes
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 
-	"github.com/AdityaP1502/Instant-Messanging/api/cache"
 	"github.com/AdityaP1502/Instant-Messanging/api/database"
 	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/middleware"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/responseerror"
+	"github.com/AdityaP1502/Instant-Messanging/api/http/router"
 	"github.com/AdityaP1502/Instant-Messanging/api/jsonutil"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/games/config"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/games/payload"
@@ -319,12 +318,15 @@ func playGamesHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.R
 	return nil
 }
 
-func SetGamesRoute(r *mux.Router, db *sql.DB, cache *cache.RedisClient, conf *config.Config) {
-	certMiddleware := middleware.CertMiddleware(conf.RootCAs)
-	authMiddleware := middleware.AuthMiddleware(conf.Service.Auth, conf.Config)
+func SetGamesRoute(r *router.Routerx) {
+	conf := r.Metadata.Config.(*config.Config)
+
+	certMiddleware := middleware.CertMiddleware(conf.RootCAs, r.Metadata)
+	authMiddleware := middleware.AuthMiddleware(conf.Service.Auth, conf.Config, r.Metadata)
 
 	playGamesPayloadMiddleware, err := middleware.PayloadCheckMiddleware(
 		&payload.UserGames{},
+		r.Metadata,
 		"Username",
 		"GameID",
 	)
@@ -335,6 +337,7 @@ func SetGamesRoute(r *mux.Router, db *sql.DB, cache *cache.RedisClient, conf *co
 
 	syncGamesPayloadMiddleware, err := middleware.PayloadCheckMiddleware(
 		&payload.Collections{},
+		r.Metadata,
 		"Games",
 	)
 
@@ -346,19 +349,26 @@ func SetGamesRoute(r *mux.Router, db *sql.DB, cache *cache.RedisClient, conf *co
 
 	subrouter.Use(middleware.RouteGetterMiddleware)
 
-	syncGames := httpx.CreateHTTPHandler(db, conf, syncUserGamesHandler)
-	subrouter.Handle("/{username}/sync", middleware.UseMiddleware(db, conf, syncGames,
-		certMiddleware,
-		syncGamesPayloadMiddleware,
-	)).Methods("POST")
+	// syncGames := httpx.CreateHTTPHandler(db, conf, syncUserGamesHandler)
+	// subrouter.Handle("/{username}/sync", middleware.UseMiddleware(db, conf, syncGames,
+	// 	certMiddleware,
+	// 	syncGamesPayloadMiddleware,
+	// )).Methods("POST")
 
-	listGames := httpx.CreateHTTPHandler(db, conf, listGamesHandler)
-	listGames.SetCache(cache)
+	subrouter.Handle("/{username}/sync", syncUserGamesHandler).
+		UseMiddleware(certMiddleware, syncGamesPayloadMiddleware).Methods("POST")
 
-	subrouter.Handle("/{username}/collections", middleware.UseMiddleware(db, conf, listGames, authMiddleware)).Methods("GET")
+	// listGames := httpx.CreateHTTPHandler(db, conf, listGamesHandler)
+	// listGames.SetCache(cache)
+
+	// subrouter.Handle("/{username}/collections", middleware.UseMiddleware(db, conf, listGames, authMiddleware)).Methods("GET")
+
+	subrouter.Handle("/{username}/collections", listGamesHandler).UseMiddleware(authMiddleware).Methods("GET")
 
 	// subrouter.Handle("/{username}/sync", middleware.UseMiddleware(db, conf, syncGames, syncGamesPayloadMiddleware)).Methods("POST")
 
-	playGames := httpx.CreateHTTPHandler(db, conf, playGamesHandler)
-	subrouter.Handle("/play", middleware.UseMiddleware(db, conf, playGames, authMiddleware, playGamesPayloadMiddleware)).Methods("POST")
+	// playGames := httpx.CreateHTTPHandler(db, conf, playGamesHandler)
+	// subrouter.Handle("/play", middleware.UseMiddleware(db, conf, playGames, authMiddleware, playGamesPayloadMiddleware)).Methods("POST")
+
+	subrouter.Handle("/play", playGamesHandler).UseMiddleware(authMiddleware, playGamesPayloadMiddleware).Methods("POST")
 }

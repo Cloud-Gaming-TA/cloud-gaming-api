@@ -10,12 +10,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AdityaP1502/Instant-Messanging/api/cache"
+	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/httputil"
+	"github.com/AdityaP1502/Instant-Messanging/api/http/router"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/session/config"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/session/routes"
-	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/cors"
 )
 
@@ -47,6 +50,12 @@ func main() {
 	fmt.Println(psqlInfo)
 	db, err := sqlx.Open("postgres", psqlInfo)
 
+	redis := cache.NewRedisClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", config.Cache.Host, config.Cache.Port),
+		Password: config.Cache.Password,
+		DB:       0,
+	})
+
 	if err != nil {
 		panic(err)
 	}
@@ -59,10 +68,24 @@ func main() {
 			time.Sleep(time.Second)
 			continue
 		}
+
+		err = redis.Client.Ping(redis.Context).Err()
+		if err != nil {
+			fmt.Println(err)
+			fmt.Println("Failed to connect to redis. Retrying...")
+			time.Sleep(time.Second)
+			continue
+		}
 		break
 	}
 
-	r := mux.NewRouter()
+	// r := mux.NewRouter()
+
+	r := router.CreateRouterx(&httpx.Metadata{
+		DB:     db.DB,
+		Cache:  redis,
+		Config: config,
+	})
 
 	// load ca cert pool
 	caCertPool := httputil.LoadRootCACertPool(os.Getenv(ROOT_CA_CERT))
@@ -90,14 +113,14 @@ func main() {
 		RootCAs: caCertPool,
 	}
 
-	routes.SetSessionRoute(r.PathPrefix("/v1").Subrouter(), db.DB, config)
+	routes.SetSessionRoute(r.PathPrefix("/v1").Subrouter())
 	// // r.Handle("/", r)
 
-	r.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("WTF is happening")
-		w.Write([]byte("Hello, world!"))
-		w.WriteHeader(200)
-	}).Methods("GET")
+	// r.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+	// 	fmt.Println("WTF is happening")
+	// 	w.Write([]byte("Hello, world!"))
+	// 	w.WriteHeader(200)
+	// }).Methods("GET")
 
 	// a := s.PathPrefix("/account").Subrouter()
 
@@ -114,7 +137,7 @@ func main() {
 		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           86400, // time in seconds
-	}).Handler(r)
+	}).Handler(r.Router)
 
 	var wg sync.WaitGroup
 	wg.Add(1)

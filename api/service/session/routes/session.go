@@ -12,6 +12,7 @@ import (
 	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/middleware"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/responseerror"
+	"github.com/AdityaP1502/Instant-Messanging/api/http/router"
 	"github.com/AdityaP1502/Instant-Messanging/api/jsonutil"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/auth/jwtutil"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/session/config"
@@ -373,15 +374,18 @@ func pairHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http.Reques
 
 }
 
-func SetSessionRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
+func SetSessionRoute(r *router.Routerx) {
+	conf := r.Metadata.Config.(*config.Config)
+
 	subrouter := r.PathPrefix("/session").Subrouter()
 
 	subrouter.Use(middleware.RouteGetterMiddleware)
 
-	authMiddleware := middleware.AuthMiddleware(conf.Service.Auth, conf.Config)
-	certMiddleware := middleware.CertMiddleware(conf.RootCAs)
+	authMiddleware := middleware.AuthMiddleware(conf.Service.Auth, conf.Config, r.Metadata)
+	certMiddleware := middleware.CertMiddleware(conf.RootCAs, r.Metadata)
 
 	createNewSessionPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.UserSession{},
+		r.Metadata,
 		"Username",
 		"SessionMetadata:GameID",
 		"SessionMetadata:GameLocation:Protocol",
@@ -394,6 +398,7 @@ func SetSessionRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
 	}
 
 	startConnectionPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.SessionHost{},
+		r.Metadata,
 		"Webhook:Port",
 		"Webhook:Host",
 		"NetworkID",
@@ -403,21 +408,30 @@ func SetSessionRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
 		log.Fatal(err)
 	}
 
-	pinPairPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.SessionPIN{}, "PIN")
+	pinPairPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.SessionPIN{}, r.Metadata, "PIN")
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	createSession := httpx.CreateHTTPHandler(db, conf, createNewSessionHandler)
-	subrouter.Handle("/create", middleware.UseMiddleware(db, conf, createSession, certMiddleware, createNewSessionPayloadMiddleware))
+	// createSession := httpx.CreateHTTPHandler(db, conf, createNewSessionHandler)
+	// subrouter.Handle("/create", middleware.UseMiddleware(db, conf, createSession, certMiddleware, createNewSessionPayloadMiddleware))
 
-	getStatus := httpx.CreateHTTPHandler(db, conf, getRequestStatus)
-	subrouter.Handle("/{session_id}/status", middleware.UseMiddleware(db, conf, getStatus, authMiddleware))
+	subrouter.Handle("/create", createNewSessionHandler).UseMiddleware(certMiddleware, createNewSessionPayloadMiddleware).Methods("POST")
 
-	startConnection := httpx.CreateHTTPHandler(db, conf, startConnectionEstablishmentHandler)
-	subrouter.Handle("/{session_id}/connection/start", middleware.UseMiddleware(db, conf, startConnection, certMiddleware, startConnectionPayloadMiddleware))
+	// getStatus := httpx.CreateHTTPHandler(db, conf, getRequestStatus)
+	// subrouter.Handle("/{session_id}/status", middleware.UseMiddleware(db, conf, getStatus, authMiddleware))
 
-	pair := httpx.CreateHTTPHandler(db, conf, pairHandler)
-	subrouter.Handle("/{session_id}/pair", middleware.UseMiddleware(db, conf, pair, authMiddleware, pinPairPayloadMiddleware))
+	subrouter.Handle("/{session_id}/status", getRequestStatus).UseMiddleware(authMiddleware).Methods("GET")
+
+	// startConnection := httpx.CreateHTTPHandler(db, conf, startConnectionEstablishmentHandler)
+	// subrouter.Handle("/{session_id}/connection/start", middleware.UseMiddleware(db, conf, startConnection, certMiddleware, startConnectionPayloadMiddleware))
+
+	subrouter.Handle("/{session_id}/connection/start", startConnectionEstablishmentHandler).
+		UseMiddleware(certMiddleware, startConnectionPayloadMiddleware).Methods("POST")
+
+	// pair := httpx.CreateHTTPHandler(db, conf, pairHandler)
+	// subrouter.Handle("/{session_id}/pair", middleware.UseMiddleware(db, conf, pair, authMiddleware, pinPairPayloadMiddleware))
+
+	subrouter.Handle("/{session_id}/pair", pairHandler).UseMiddleware(pinPairPayloadMiddleware).Methods("POST")
 }

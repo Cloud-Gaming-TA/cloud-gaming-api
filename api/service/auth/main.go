@@ -10,10 +10,11 @@ import (
 	"sync"
 	"time"
 
+	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/httputil"
+	"github.com/AdityaP1502/Instant-Messanging/api/http/router"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/auth/config"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/auth/routes"
-	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/rs/cors"
@@ -55,7 +56,13 @@ func main() {
 		break
 	}
 
-	r := mux.NewRouter()
+	// r := mux.NewRouter()
+	r := router.CreateRouterx(
+		&httpx.Metadata{
+			DB:     db.DB,
+			Config: config,
+		},
+	)
 
 	passphrasePath := os.Getenv(PASSPHRASE)
 
@@ -80,7 +87,7 @@ func main() {
 		RootCAs: rootCAPool,
 	}
 
-	routes.SetAuthRoute(r.PathPrefix("/v1").Subrouter(), db.DB, config)
+	routes.SetAuthRoute(r.PathPrefix("/v1").Subrouter())
 
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -89,7 +96,7 @@ func main() {
 		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           86400, // time in seconds
-	}).Handler(r)
+	}).Handler(r.Router)
 
 	// wait until the server has ended
 	var wg sync.WaitGroup

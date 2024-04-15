@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,11 +10,11 @@ import (
 	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/middleware"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/responseerror"
+	"github.com/AdityaP1502/Instant-Messanging/api/http/router"
 	"github.com/AdityaP1502/Instant-Messanging/api/jsonutil"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/auth/config"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/auth/jwtutil"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/auth/payload"
-	"github.com/gorilla/mux"
 )
 
 type RevokedToken struct {
@@ -186,36 +185,45 @@ func RevokeTokenHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *http
 	return nil
 }
 
-func SetAuthRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
+func SetAuthRoute(r *router.Routerx) {
 	subrouter := r.PathPrefix("/auth").Subrouter()
 
-	credentialsPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Credentials{}, "Username", "Roles", "Email")
+	conf := subrouter.Metadata.Config.(*config.Config)
+	credentialsPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Credentials{}, r.Metadata,
+		"Username", "Roles", "Email",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	refreshpayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Token{}, "RefreshToken", "AccessToken")
+	refreshpayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Token{}, r.Metadata,
+		"RefreshToken", "AccessToken",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	revokepayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Token{}, "AccessToken")
+	revokepayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Token{}, r.Metadata,
+		"AccessToken",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	certMiddleware := middleware.CertMiddleware(conf.RootCAs)
+	certMiddleware := middleware.CertMiddleware(conf.RootCAs, r.Metadata)
 
-	accesspayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Access{}, "Endpoint", "AccessToken")
+	accesspayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Access{}, r.Metadata,
+		"Endpoint", "AccessToken",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	issueToken := httpx.CreateHTTPHandler(db, conf, IssueTokenHandler)
+	// issueToken := httpx.CreateHTTPHandler(db, conf, IssueTokenHandler)
 
 	// refreshToken := &httpx.Handler{
 	// 	DB:      db,
@@ -223,16 +231,22 @@ func SetAuthRoute(r *mux.Router, db *sql.DB, conf *config.Config) {
 	// 	Handler: httpx.HandlerLogic(RefreshTokenHandler),
 	// }
 
-	refreshToken := httpx.CreateHTTPHandler(db, conf, RefreshTokenHandler)
+	// refreshToken := httpx.CreateHTTPHandler(db, conf, RefreshTokenHandler)
 
-	verifyToken := httpx.CreateHTTPHandler(db, conf, VerifyTokenHandler)
+	// verifyToken := httpx.CreateHTTPHandler(db, conf, VerifyTokenHandler)
 
-	revokeToken := httpx.CreateHTTPHandler(db, conf, RevokeTokenHandler)
+	// revokeToken := httpx.CreateHTTPHandler(db, conf, RevokeTokenHandler)
 
-	subrouter.Handle("/token/issue", middleware.UseMiddleware(db, conf, issueToken, certMiddleware, credentialsPayloadMiddleware))
-	subrouter.Handle("/token/refresh", middleware.UseMiddleware(db, conf, refreshToken,
-		refreshpayloadMiddleware)).Methods("POST")
-	subrouter.Handle("/token/verify", middleware.UseMiddleware(db, conf, verifyToken, certMiddleware, accesspayloadMiddleware))
-	subrouter.Handle("/token/revoke", middleware.UseMiddleware(db, conf, revokeToken, certMiddleware, revokepayloadMiddleware))
+	// subrouter.Handle("/token/issue", middleware.UseMiddleware(db, conf, issueToken, certMiddleware, credentialsPayloadMiddleware))
+	// subrouter.Handle("/token/refresh", middleware.UseMiddleware(db, conf, refreshToken,
+	// refreshpayloadMiddleware)).Methods("POST")
+
+	// subrouter.Handle("/token/verify", middleware.UseMiddleware(db, conf, verifyToken, certMiddleware, accesspayloadMiddleware))
+	// subrouter.Handle("/token/revoke", middleware.UseMiddleware(db, conf, revokeToken, certMiddleware, revokepayloadMiddleware))
+
+	subrouter.Handle("/token/issue", IssueTokenHandler).UseMiddleware(certMiddleware, credentialsPayloadMiddleware).Methods("POST")
+	subrouter.Handle("/token/refresh", RefreshTokenHandler).UseMiddleware(certMiddleware, refreshpayloadMiddleware).Methods("POST")
+	subrouter.Handle("/token/revoke", RevokeTokenHandler).UseMiddleware(certMiddleware, revokepayloadMiddleware).Methods("POST")
+	subrouter.Handle("/token/verify", VerifyTokenHandler).UseMiddleware(certMiddleware, accesspayloadMiddleware).Methods("POST")
 
 }

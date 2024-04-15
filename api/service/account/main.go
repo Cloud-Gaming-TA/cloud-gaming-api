@@ -10,10 +10,11 @@ import (
 	"sync"
 	"time"
 
+	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/httputil"
+	"github.com/AdityaP1502/Instant-Messanging/api/http/router"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/account/config"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/account/routes"
-	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/rs/cors"
@@ -96,16 +97,21 @@ func main() {
 		RootCAs: caCertPool,
 	}
 
-	r := mux.NewRouter()
+	// r := mux.NewRouter()
 
-	routes.SetAccountRoute(r.PathPrefix("/v1").Subrouter(), db.DB, config)
+	r := router.CreateRouterx(&httpx.Metadata{
+		DB:     db.DB,
+		Config: config,
+	})
+
+	routes.SetAccountRoute(r.PathPrefix("/v1").Subrouter())
 	// // r.Handle("/", r)
 
-	r.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("WTF is happening")
-		w.Write([]byte("Hello, world!"))
-		w.WriteHeader(200)
-	}).Methods("GET")
+	// r.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+	// 	fmt.Println("WTF is happening")
+	// 	w.Write([]byte("Hello, world!"))
+	// 	w.WriteHeader(200)
+	// }).Methods("GET")
 
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -114,7 +120,7 @@ func main() {
 		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           86400, // time in seconds
-	}).Handler(r)
+	}).Handler(r.Router)
 
 	var wg sync.WaitGroup
 	wg.Add(1)

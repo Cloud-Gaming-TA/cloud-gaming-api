@@ -12,6 +12,7 @@ import (
 	httpx "github.com/AdityaP1502/Instant-Messanging/api/http"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/middleware"
 	"github.com/AdityaP1502/Instant-Messanging/api/http/responseerror"
+	"github.com/AdityaP1502/Instant-Messanging/api/http/router"
 	"github.com/AdityaP1502/Instant-Messanging/api/jsonutil"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/account/config"
 	"github.com/AdityaP1502/Instant-Messanging/api/service/account/otp"
@@ -656,60 +657,74 @@ func getUserSteamIDHandler(metadata *httpx.Metadata, w http.ResponseWriter, r *h
 }
 
 // Register account subrouter
-func SetAccountRoute(r *mux.Router, db *sql.DB, config *config.Config) {
+func SetAccountRoute(r *router.Routerx) {
 	subrouter := r.PathPrefix("/account").Subrouter()
+	config := subrouter.Metadata.Config.(*config.Config)
 
 	subrouter.Use(middleware.RouteGetterMiddleware)
 
-	certMiddleware := middleware.CertMiddleware(config.RootCAs)
+	certMiddleware := middleware.CertMiddleware(config.RootCAs, r.Metadata)
 
 	// Create middleware here
-	userPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Account{}, "Username", "Name", "Email", "Password")
+	userPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Account{}, r.Metadata,
+		"Username", "Name", "Email", "Password",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	otpPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.UserOTP{}, "Email", "OTP")
+	otpPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.UserOTP{}, r.Metadata,
+		"Email", "OTP",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	otpResendPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.UserOTP{}, "Email")
+	otpResendPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.UserOTP{}, r.Metadata,
+		"Email",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	loginPayloadMIddleware, err := middleware.PayloadCheckMiddleware(&payload.Account{}, "Email", "Password")
+	loginPayloadMIddleware, err := middleware.PayloadCheckMiddleware(&payload.Account{}, r.Metadata,
+		"Email", "Password",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	linkSteamPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Account{}, "SteamID")
+	linkSteamPayloadMiddleware, err := middleware.PayloadCheckMiddleware(&payload.Account{}, r.Metadata,
+		"SteamID",
+	)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// REGISTER ROUTE //
-	register := httpx.CreateHTTPHandler(db, config, registerHandler)
+	// register := httpx.CreateHTTPHandler(db, config, registerHandler)
 
-	subrouter.Handle("/register", middleware.UseMiddleware(db, config, register,
-		userPayloadMiddleware)).Methods("POST")
+	subrouter.Handle("/register", registerHandler).
+		UseMiddleware(userPayloadMiddleware).Methods("POST")
 
 	// VERIFY OTP ROUTE //
 	// verifyOTP := &httpx.Handler{
 	// 	DB:      db,
-	// 	Config:  config,
+	// 	Config:  config
 	// 	Handler: verifyOTPHandler,
 	// }
 
-	verifyOTP := httpx.CreateHTTPHandler(db, config, verifyOTPHandler)
-	subrouter.Handle("/otp/verify", middleware.UseMiddleware(db, config, verifyOTP,
-		otpPayloadMiddleware)).Methods("POST")
+	// verifyOTP := httpx.CreateHTTPHandler(db, config, verifyOTPHandler)
+	// subrouter.Handle("/otp/verify", middleware.UseMiddleware(db, config, verifyOTP,
+	// 	otpPayloadMiddleware)).Methods("POST")
+
+	subrouter.Handle("/otp/verify", verifyOTPHandler).
+		UseMiddleware(otpPayloadMiddleware).Methods("POST")
 
 	// RESEND OTP ROUTE //
 	// resendOTP := &httpx.Handler{
@@ -718,9 +733,12 @@ func SetAccountRoute(r *mux.Router, db *sql.DB, config *config.Config) {
 	// 	Handler: resendOTPHandler,
 	// }
 
-	resendOTP := httpx.CreateHTTPHandler(db, config, resendOTPHandler)
-	subrouter.Handle("/otp/send", middleware.UseMiddleware(db, config, resendOTP,
-		otpResendPayloadMiddleware)).Methods("POST")
+	// resendOTP := httpx.CreateHTTPHandler(db, config, resendOTPHandler)
+	// subrouter.Handle("/otp/send", middleware.UseMiddleware(db, config, resendOTP,
+	// 	otpResendPayloadMiddleware)).Methods("POST")
+
+	subrouter.Handle("/otp/send", resendOTPHandler).
+		UseMiddleware(otpResendPayloadMiddleware).Methods("POST")
 
 	// LOGIN ROUTE //
 	// login := &httpx.Handler{
@@ -729,19 +747,31 @@ func SetAccountRoute(r *mux.Router, db *sql.DB, config *config.Config) {
 	// 	Handler: loginHandler,
 	// }
 
-	login := httpx.CreateHTTPHandler(db, config, loginHandler)
+	// login := httpx.CreateHTTPHandler(db, config, loginHandler)
 
-	subrouter.Handle("/login", middleware.UseMiddleware(db, config, login,
-		loginPayloadMIddleware)).Methods("POST")
+	// subrouter.Handle("/login", middleware.UseMiddleware(db, config, login,
+	// 	loginPayloadMIddleware)).Methods("POST")
 
-	linkSteamId := httpx.CreateHTTPHandler(db, config, linkSteamAccountHandler)
-	subrouter.Handle("/{username}/steam", middleware.UseMiddleware(db, config, linkSteamId, certMiddleware, linkSteamPayloadMiddleware)).Methods("POST")
+	subrouter.Handle("/login", loginHandler).
+		UseMiddleware(loginPayloadMIddleware).Methods("POST")
 
-	getSteamId := httpx.CreateHTTPHandler(db, config, getUserSteamIDHandler)
-	subrouter.Handle("/{username}/steam", getSteamId).Methods("GET")
+	// linkSteamId := httpx.CreateHTTPHandler(db, config, linkSteamAccountHandler)
+	// subrouter.Handle("/{username}/steam", middleware.UseMiddleware(db, config, linkSteamId, certMiddleware, linkSteamPayloadMiddleware)).Methods("POST")
 
-	rollbackSteamID := httpx.CreateHTTPHandler(db, config, rollbackSteamLinkHandler)
-	subrouter.Handle("/{username}/steam", middleware.UseMiddleware(db, config, rollbackSteamID, certMiddleware)).Methods("DELETE")
+	subrouter.Handle("/{username}/steam", linkSteamAccountHandler).
+		UseMiddleware(certMiddleware, linkSteamPayloadMiddleware).Methods("POST")
+
+	// getSteamId := httpx.CreateHTTPHandler(db, config, getUserSteamIDHandler)
+	// subrouter.Handle("/{username}/steam", getSteamId).Methods("GET")
+
+	subrouter.Handle("/{username}/steam", getUserSteamIDHandler).Methods("GET")
+
+	// rollbackSteamID := httpx.CreateHTTPHandler(db, config, rollbackSteamLinkHandler)
+	// subrouter.Handle("/{username}/steam", middleware.UseMiddleware(db, config, rollbackSteamID, certMiddleware)).Methods("DELETE")
+
+	subrouter.Handle("/{username}/steam", rollbackSteamLinkHandler).
+		UseMiddleware(certMiddleware).Methods("DELETE")
+
 	// subrouter.Handle("/{username}/steam", rollbackSteamID).Methods("DELETE")
 
 	// subrouter.HandleFunc("/logout", logOutHandler).Methods("POST")
