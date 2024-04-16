@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	DB_PASSWORD string = os.Getenv("DB_PASSWORD")
-	DB_USER     string = os.Getenv("DB_USER")
-	DB_DATABASE string = os.Getenv("DB_DATABASE_NAME")
+	DB_PASSWORD    string = os.Getenv("DB_PASSWORD")
+	DB_USER        string = os.Getenv("DB_USER")
+	DB_DATABASE    string = os.Getenv("DB_DATABASE_NAME")
+	REDIS_PASSWORD string = os.Getenv("REDIS_PASSWORD")
 )
 
 type Config struct {
@@ -25,6 +26,12 @@ type Config struct {
 		Password string `json:"password"`
 		Database string `json:"database"`
 	} `json:"database"`
+
+	Cache struct {
+		Host     string `json:"host"`
+		Port     int    `json:"port,string"`
+		Password string `json:"password"`
+	} `json:"cache"`
 
 	Server struct {
 		Host   string `json:"host"`
@@ -52,6 +59,7 @@ func ReadJSONConfiguration(path string) (*Config, error) {
 	config.Database.Username = DB_USER
 	config.Database.Password = DB_PASSWORD
 	config.Database.Database = DB_DATABASE
+	config.Cache.Password = REDIS_PASSWORD
 
 	exe, err := os.Executable()
 	if err != nil {

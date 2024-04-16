@@ -1,6 +1,7 @@
 {
     "service_name": "Instant-Messaging Games Service",
     "version": "v1",
+
     "database": {
         "driver": "postgres",
         "host": "db-session",
@@ -11,6 +12,11 @@
         "host": "0.0.0.0",
         "port": "4500",
         "secure": "true"
+    },
+
+    "cache": {
+        "host": "session-cache",
+        "port": "4379"
     },
 
     "services": {

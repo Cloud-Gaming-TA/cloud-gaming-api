@@ -6,7 +6,10 @@
         "host": "db-games",
         "port": "5432"
     },
-
+    "cache": {
+        "host": "games-cache",
+        "port": "4379"
+    },
     "server": {
         "host": "0.0.0.0",
         "port": "3500",
@@ -22,7 +25,7 @@
         "account": {
             "host": "account",
             "port": "8000",
-            "scheme": "https"
+            "scheme": "https"   
         },
         "auth": {
             "host": "auth",
@@ -35,4 +38,5 @@
         "default_limit": "10",
         "max_limit": "100"
     }
+
 }
